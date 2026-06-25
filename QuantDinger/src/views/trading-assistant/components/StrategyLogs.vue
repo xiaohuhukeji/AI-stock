@@ -145,10 +145,35 @@ export default {
     displayLogs () {
       return this.filteredLogs.slice()
     },
+    /** Strategy execution mode: 'live' = auto trade, 'signal' = manual only. */
+    executionMode () {
+      return (this.strategyInfo && this.strategyInfo.execution_mode) || 'signal'
+    },
+    /** K线周期 (e.g., "15m", "1H"). Default to "15m" if missing. */
+    timeframe () {
+      return (this.strategyInfo && this.strategyInfo.trading_config && this.strategyInfo.trading_config.timeframe) || '15m'
+    },
+    /** Convert timeframe string to seconds. */
+    timeframeSeconds () {
+      const tf = String(this.timeframe || '15m').trim().toLowerCase()
+      const m = /^(\d+)\s*(s|m|h|d)$/.exec(tf)
+      if (!m) return 900
+      const n = parseInt(m[1], 10)
+      const unit = m[2]
+      if (unit === 's') return n
+      if (unit === 'm') return n * 60
+      if (unit === 'h') return n * 3600
+      if (unit === 'd') return n * 86400
+      return 900
+    },
+    /** Whether this strategy is in "signal-only" mode (manual trading). */
+    isSignalMode () {
+      return String(this.executionMode || '').toLowerCase() !== 'live'
+    },
     isCNStockStrategy () {
       if (!this.strategyInfo) return false
       const cat = (this.strategyInfo.trading_config && this.strategyInfo.trading_config.market_type) || ''
-      return String(cat).toLowerCase() === 'cnstock' || /^\d{6}$/.test(this.currentSymbol)
+      return String(cat).toLowerCase() === 'cnstock' || /^\d{6}\.SH$|^\d{6}\.SZ$|^\d{6}$/.test(this.currentSymbol)
     },
     currentSymbol () {
       return (this.strategyInfo && this.strategyInfo.trading_config && this.strategyInfo.trading_config.symbol) || ''
@@ -277,10 +302,14 @@ export default {
 
     startManualAlertCheck () {
       this.stopManualAlertCheck()
-      if (!this.isCNStockStrategy || !this.currentSymbol) return
-      this.checkCNStockAlertTime()
+      // 只支持 A股 手动信号模式.
+      if (!this.isCNStockStrategy) return
+      if (!this.isSignalMode) return
+      if (!this.currentSymbol) return
+      // 30s 轮询; K线开始的60s窗口内触发一次.
+      this.checkKlineBoundaryAlert()
       this.manualAlertTimer = setInterval(() => {
-        this.checkCNStockAlertTime()
+        this.checkKlineBoundaryAlert()
       }, 30000)
     },
 
@@ -291,53 +320,102 @@ export default {
       }
     },
 
-    checkCNStockAlertTime () {
+    /**
+     * A股 K线开始时提醒（给用户 timeframe 分钟的时间在K线收盘前手动下单）.
+     * 仅工作日 & A股交易时段内触发.
+     *
+     *   - 15m K线: 9:30 开始 → 9:45 结束 → 在 9:30 提醒.
+     *   - 15m K线: 13:00 开始 → 13:15 结束 → 在 13:00 提醒.
+     */
+    checkKlineBoundaryAlert () {
       const now = new Date()
       const day = now.getDay()
+      // 周末不提醒.
       if (day === 0 || day === 6) return
+
       const hours = now.getHours()
       const minutes = now.getMinutes()
       const totalMinutes = hours * 60 + minutes
-      const morningAlert = 9 * 60 + 15
-      const afternoonAlert = 13 * 60 + 0
-      if (totalMinutes >= morningAlert && totalMinutes < 9 * 60 + 30) {
-        this.showManualAlert('上午盘', now)
-      } else if (totalMinutes >= afternoonAlert && totalMinutes < 13 * 60 + 15) {
-        this.showManualAlert('下午盘', now)
-      } else {
-        this.manualAlertVisible = false
-      }
-    },
+      // A股交易时段: 上午 9:30-11:30, 下午 13:00-15:00.
+      const morningStart = 9 * 60 + 30
+      const morningEnd = 11 * 60 + 30
+      const afternoonStart = 13 * 60 + 0
+      const afternoonEnd = 15 * 60 + 0
+      const inTradingHours =
+        (totalMinutes >= morningStart && totalMinutes < morningEnd) ||
+        (totalMinutes >= afternoonStart && totalMinutes < afternoonEnd)
+      if (!inTradingHours) return
 
-    async showManualAlert (session, now) {
-      const alertKey = `${session}_${now.getDate()}`
+      const nowTs = now.getTime()
+      const tfSec = this.timeframeSeconds
+      if (!tfSec || tfSec < 60) return
+
+      const nowSec = Math.floor(nowTs / 1000)
+      // K线边界按 Unix epoch 对齐.
+      const currentBarEnd = Math.floor(nowSec / tfSec) * tfSec
+      const currentBarStart = currentBarEnd - tfSec
+      const secSinceOpen = nowSec - currentBarStart
+      const secToClose = currentBarEnd - nowSec
+
+      // 提醒窗口 = K线开始后 60 秒内（刚开盘时）.
+      const windowSec = 60
+      const inAlertWindow = secSinceOpen >= 0 && secSinceOpen <= windowSec
+      if (!inAlertWindow) return
+
+      // 每个 (K线, 策略) 每个 bar 最多提醒一次.
+      const alertKey = `${this.currentSymbol}_${currentBarEnd}`
       if (this.lastAlertTime === alertKey) return
       this.lastAlertTime = alertKey
+
+      const minToClose = Math.floor(secToClose / 60)
+      this.showKlineAlert({
+        symbol: this.currentSymbol,
+        name: (this.strategyInfo && this.strategyInfo.strategy_name) || '',
+        timeframe: this.timeframe,
+        currentBarStart: this._formatTime(currentBarStart),
+        currentBarEnd: this._formatTime(currentBarEnd),
+        minToClose: minToClose,
+        nowDate: now
+      })
+    },
+
+    _formatTime (epochSec) {
+      const d = new Date(epochSec * 1000)
+      const hh = String(d.getHours()).padStart(2, '0')
+      const mm = String(d.getMinutes()).padStart(2, '0')
+      return `${hh}:${mm}`
+    },
+
+    async showKlineAlert (info) {
       try {
         const res = await request({
           url: '/api/market/price',
           method: 'get',
           params: {
-            market: 'CNStock',
-            symbol: this.currentSymbol
+            market: (this.strategyInfo.trading_config && this.strategyInfo.trading_config.market_type) || 'CNStock',
+            symbol: info.symbol
           }
         })
         if (res && res.code === 1 && res.data) {
           const price = parseFloat(res.data.price || 0)
           if (price > 0) {
-            this.priceCache[this.currentSymbol] = price
-            const alertTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
+            this.priceCache[info.symbol] = price
+            const alertTime = `${String(info.nowDate.getHours()).padStart(2, '0')}:${String(info.nowDate.getMinutes()).padStart(2, '0')}`
             this.manualAlertData = {
-              symbol: this.currentSymbol,
-              name: (this.strategyInfo && this.strategyInfo.strategy_name) || '',
+              symbol: info.symbol,
+              name: info.name,
               price: price.toFixed(2),
               alertTime: alertTime,
-              session: session === '上午盘' ? '09:30 - 11:30' : '13:00 - 15:00'
+              timeframe: info.timeframe,
+              barStart: info.currentBarStart,
+              barEnd: info.currentBarEnd,
+              minToClose: info.minToClose,
+              session: `${info.currentBarStart} - ${info.currentBarEnd}`
             }
             this.manualAlertVisible = true
             this.$notification.warning({
               message: '手动操作提示',
-              description: `A股${session}即将开始，当前价格：${price.toFixed(2)}，建议提前下单`,
+              description: `${info.symbol} ${info.timeframe}K线将在 ${info.minToClose} 分钟后于 ${info.currentBarEnd} 收盘，当前价格：${price.toFixed(2)}，请提前手动下单`,
               duration: 15
             })
             try {
@@ -346,9 +424,9 @@ export default {
                 method: 'post',
                 data: {
                   strategy_id: this.strategyId,
-                  symbol: this.currentSymbol,
+                  symbol: info.symbol,
                   price: price,
-                  session: session,
+                  session: `${info.timeframe} K线 (${info.currentBarStart}-${info.currentBarEnd})`,
                   alert_time: alertTime
                 }
               })
@@ -358,7 +436,7 @@ export default {
           }
         }
       } catch (e) {
-        console.warn('Get CNStock price failed:', e)
+        console.warn('Get price failed:', e)
       }
     }
   }
