@@ -92,6 +92,10 @@
           {{ getLevelText(log.level) }}
         </a-tag>
         <span class="log-message">{{ log.message }}</span>
+        <span v-if="log.reference_price && log.reference_price > 0" class="log-reference-price">
+          <span class="ref-price-label">参考价:</span>
+          <span class="ref-price-value">{{ log.reference_price.toFixed(2) }}</span>
+        </span>
       </div>
     </div>
   </div>
@@ -582,6 +586,29 @@ export default {
   word-break: break-all;
 }
 
+.log-reference-price {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  padding: 2px 6px;
+  background: linear-gradient(135deg, #e6f7ff, #f0f5ff);
+  border: 1px solid #91d5ff;
+  border-radius: 4px;
+  font-size: 11px;
+
+  .ref-price-label {
+    color: #1890ff;
+    font-weight: 500;
+  }
+
+  .ref-price-value {
+    color: #1890ff;
+    font-weight: 600;
+    font-family: 'Fira Code', 'Consolas', monospace;
+  }
+}
+
 .manual-alert-panel {
   background: linear-gradient(135deg, #fffbe6, #fff7e6);
   border: 1px solid #ffe58f;
@@ -769,6 +796,19 @@ export default {
 
   .log-message {
     color: rgba(255, 255, 255, 0.75);
+  }
+
+  .log-reference-price {
+    background: rgba(24, 144, 255, 0.1);
+    border-color: rgba(24, 144, 255, 0.3);
+
+    .ref-price-label {
+      color: #40a9ff;
+    }
+
+    .ref-price-value {
+      color: #40a9ff;
+    }
   }
 
   .manual-alert-panel {

@@ -4283,6 +4283,63 @@ class TradingExecutor:
                     qty += amount
         return max(0.0, qty)
 
+    def _get_backtest_reference_price(self, strategy_id: int, symbol: str, signal_type: str) -> float:
+        """Get reference price from latest backtest results.
+
+        Returns the average price of similar signals (open/close) from the most recent backtest.
+        """
+        try:
+            with get_db_connection() as db:
+                cur = db.cursor()
+                cur.execute(
+                    """
+                    SELECT id FROM qd_backtest_runs
+                    WHERE strategy_id = %s
+                      AND status = 'success'
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (int(strategy_id),),
+                )
+                run_row = cur.fetchone()
+                if not run_row:
+                    cur.close()
+                    return 0.0
+                run_id = int(run_row.get('id'))
+
+                signal_type_norm = str(signal_type or "").strip().lower()
+                if signal_type_norm in ("open_long", "add_long", "open_short", "add_short"):
+                    trade_type_like = "open%"
+                elif signal_type_norm in ("close_long", "reduce_long", "close_short", "reduce_short"):
+                    trade_type_like = "close%"
+                else:
+                    cur.close()
+                    return 0.0
+
+                cur.execute(
+                    """
+                    SELECT price FROM qd_backtest_trades
+                    WHERE run_id = %s
+                      AND trade_type LIKE %s
+                    ORDER BY trade_index DESC
+                    LIMIT 5
+                    """,
+                    (run_id, trade_type_like),
+                )
+                rows = cur.fetchall() or []
+                cur.close()
+
+                if not rows:
+                    return 0.0
+
+                prices = [float(r.get('price') or 0) for r in rows if float(r.get('price') or 0) > 0]
+                if not prices:
+                    return 0.0
+                return sum(prices) / len(prices)
+        except Exception as e:
+            logger.debug(f"Failed to get backtest reference price: {e}")
+            return 0.0
+
     def _execute_trading_logic(self, *args, **kwargs):
         """已废弃"""
         pass
@@ -4785,9 +4842,11 @@ class TradingExecutor:
                         size=new_size, entry_price=new_entry, current_price=current_price
                     )
                     signal_action = "开多" if "long" in signal_type else "开空"
+                    ref_price = self._get_backtest_reference_price(strategy_id, symbol, signal_type)
                     append_strategy_log(
                         strategy_id, "trade",
                         f"开仓: {signal_action} {symbol} 数量={amount:.6f} @ 价格={current_price:.6f}, 手续费={_est_commission:.6f}",
+                        reference_price=ref_price if ref_price > 0 else 0,
                     )
                 elif sig.startswith("reduce_"):
                     # Partial scale-out: reduce position size, keep entry price unchanged.
@@ -4824,9 +4883,11 @@ class TradingExecutor:
                         )
                     _pstr = f", 盈利={reduce_profit:.4f}" if reduce_profit is not None else ""
                     signal_action = "减多" if "long" in signal_type else "减空"
+                    ref_price = self._get_backtest_reference_price(strategy_id, symbol, signal_type)
                     append_strategy_log(
                         strategy_id, "trade",
                         f"减仓: {signal_action} {symbol} 数量={amount:.6f} @ 价格={current_price:.6f}, 手续费={_est_commission:.6f}{_pstr}",
+                        reference_price=ref_price if ref_price > 0 else 0,
                     )
                 elif 'close' in sig:
                     side = 'short' if 'short' in signal_type else 'long'
@@ -4852,9 +4913,11 @@ class TradingExecutor:
                     self._close_position(strategy_id, symbol, side)
                     _pstr = f", 盈利={close_profit:.4f}" if close_profit is not None else ""
                     signal_action = "平多" if "long" in signal_type else "平空"
+                    ref_price = self._get_backtest_reference_price(strategy_id, symbol, signal_type)
                     append_strategy_log(
                         strategy_id, "trade",
                         f"平仓: {signal_action} {symbol} 数量={amount:.6f} @ 价格={current_price:.6f}, 手续费={_est_commission:.6f}{_pstr}",
+                        reference_price=ref_price if ref_price > 0 else 0,
                     )
 
                 return True

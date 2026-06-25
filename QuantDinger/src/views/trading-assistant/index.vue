@@ -565,6 +565,12 @@
                       :is-dark="isDarkTheme"
                       :strategy-info="selectedStrategy" />
                   </a-tab-pane>
+                  <a-tab-pane key="reference" tab="参考">
+                    <strategy-reference
+                      :strategy-id="selectedStrategy.id"
+                      :is-dark="isDarkTheme"
+                      :strategy-info="selectedStrategy" />
+                  </a-tab-pane>
                 </a-tabs>
               </a-card>
             </div>
@@ -1568,6 +1574,7 @@ import StrategyTypeSelector from './components/StrategyTypeSelector.vue'
 import PerformanceAnalysis from './components/PerformanceAnalysis.vue'
 import StrategyReviewReport from './components/StrategyReviewReport.vue'
 import StrategyLogs from './components/StrategyLogs.vue'
+import StrategyReference from './components/StrategyReference.vue'
 import ExchangeAccountModal from '@/components/ExchangeAccountModal/ExchangeAccountModal.vue'
 import { CROSS_SECTIONAL_INDICATOR_TEMPLATE } from '@/constants/crossSectionalIndicatorTemplate'
 
@@ -1616,6 +1623,7 @@ export default {
     PerformanceAnalysis,
     StrategyReviewReport,
     StrategyLogs,
+    StrategyReference,
     ExchangeAccountModal
   },
   computed: {

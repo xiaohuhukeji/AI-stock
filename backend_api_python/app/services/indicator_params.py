@@ -36,12 +36,12 @@ class StrategyConfigParser:
     )
 
     VALID_KEYS = {
-        'stopLossPct':          {'type': 'float', 'min': 0, 'max': 1},
-        'takeProfitPct':        {'type': 'float', 'min': 0, 'max': 5},
-        'entryPct':             {'type': 'float', 'min': 0.01, 'max': 1},
+        'stopLossPct':          {'type': 'float', 'min': 0, 'max': 100, 'is_ratio': True},
+        'takeProfitPct':        {'type': 'float', 'min': 0, 'max': 1000, 'is_ratio': True},
+        'entryPct':             {'type': 'float', 'min': 0.01, 'max': 100, 'is_ratio': True},
         'trailingEnabled':      {'type': 'bool'},
-        'trailingStopPct':      {'type': 'float', 'min': 0, 'max': 1},
-        'trailingActivationPct':{'type': 'float', 'min': 0, 'max': 1},
+        'trailingStopPct':      {'type': 'float', 'min': 0, 'max': 100, 'is_ratio': True},
+        'trailingActivationPct':{'type': 'float', 'min': 0, 'max': 100, 'is_ratio': True},
         'tradeDirection':       {'type': 'str',   'enum': ['long', 'short', 'both']},
     }
     VALID_EXIT_OWNERS = {'engine', 'indicator'}
@@ -109,6 +109,9 @@ class StrategyConfigParser:
         try:
             if t == 'float':
                 v = float(raw)
+                if spec.get('is_ratio', False):
+                    if v > 1:
+                        v = v / 100.0
                 v = max(spec.get('min', v), min(spec.get('max', v), v))
                 return round(v, 6)
             elif t == 'int':
