@@ -854,23 +854,22 @@ class SignalNotifier:
     ) -> Tuple[bool, str]:
         try:
             now = int(time.time())
-            # Get user_id from strategy if not provided
-            if user_id is None:
-                if strategy_id is not None:
-                    try:
-                        with get_db_connection() as db:
-                            cur = db.cursor()
-                            cur.execute("SELECT user_id FROM qd_strategies_trading WHERE id = %s", (int(strategy_id),))
-                            row = cur.fetchone()
-                            cur.close()
-                        user_id = int((row or {}).get('user_id') or 1)
-                    except Exception:
-                        user_id = 1
-                else:
-                    user_id = 1
             sid = None if strategy_id is None else int(strategy_id)
+            
             with get_db_connection() as db:
                 cur = db.cursor()
+                
+                if user_id is None:
+                    if strategy_id is not None:
+                        try:
+                            cur.execute("SELECT user_id FROM qd_strategies_trading WHERE id = %s", (sid,))
+                            row = cur.fetchone()
+                            user_id = int((row or {}).get('user_id') or 1)
+                        except Exception:
+                            user_id = 1
+                    else:
+                        user_id = 1
+                
                 cur.execute(
                     """
                     INSERT INTO qd_strategy_notifications
