@@ -4240,7 +4240,8 @@ class TradingExecutor:
     def _today_bought_qty_from_trade_rows(self, strategy_id: int, symbol: str, side: str) -> float:
         """Calculate today's bought quantity from trade rows for T+1 check.
 
-        Returns the total quantity bought today (not yet sold) for a given symbol and side.
+        Returns the total quantity bought today for a given symbol and side.
+        Note: This only counts opening buys, NOT net position (don't subtract closes).
         """
         side_norm = (side or "").strip().lower()
         if side_norm not in ("long", "short"):
@@ -4277,13 +4278,9 @@ class TradingExecutor:
             if side_norm == "long":
                 if typ in ("open_long", "add_long"):
                     qty += amount
-                elif typ in ("close_long", "reduce_long"):
-                    qty -= amount
             else:
                 if typ in ("open_short", "add_short"):
                     qty += amount
-                elif typ in ("close_short", "reduce_short"):
-                    qty -= amount
         return max(0.0, qty)
 
     def _execute_trading_logic(self, *args, **kwargs):
