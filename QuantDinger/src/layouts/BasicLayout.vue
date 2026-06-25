@@ -478,11 +478,19 @@ export default {
       const visibleRoutes = routes.filter(route => !route.hidden && !accountMenuPaths.includes(route.path))
       const groups = [
         {
-          name: 'MenuGroupAI',
-          path: '/menu-group/ai-workspace',
-          title: this.$t('menu.group.aiWorkspace') || 'AI Workspace',
-          icon: 'thunderbolt',
+          name: 'MenuGroupAIAsset',
+          path: '/menu-group/ai-asset-analysis',
+          title: this.$t('menu.dashboard.aiAssetAnalysis') || 'AI Asset Analysis',
+          icon: 'appstore',
           paths: ['/ai-asset-analysis'],
+          singleAsItem: true
+        },
+        {
+          name: 'MenuGroupAIStockScreener',
+          path: '/menu-group/ai-stock-screener',
+          title: this.$t('menu.dashboard.aiStockScreener') || 'AI Stock Screener',
+          icon: 'stock',
+          paths: ['/ai-stock-screener'],
           singleAsItem: true
         },
         {

@@ -1381,7 +1381,7 @@ class PendingOrderWorker:
             with get_db_connection() as db:
                 cur = db.cursor()
                 cur.execute(
-                    "SELECT notification_config FROM qd_strategies_trading WHERE id = ?",
+                    "SELECT notification_config FROM qd_strategies_trading WHERE id = %s",
                     (int(strategy_id),),
                 )
                 row = cur.fetchone() or {}
@@ -1404,7 +1404,7 @@ class PendingOrderWorker:
             with get_db_connection() as db:
                 cur = db.cursor()
                 cur.execute(
-                    "SELECT risk_config FROM qd_strategies_trading WHERE id = ?",
+                    "SELECT risk_config FROM qd_strategies_trading WHERE id = %s",
                     (int(strategy_id),),
                 )
                 row = cur.fetchone() or {}
@@ -1585,7 +1585,7 @@ class PendingOrderWorker:
         try:
             with get_db_connection() as db:
                 cur = db.cursor()
-                cur.execute("SELECT strategy_name FROM qd_strategies_trading WHERE id = ?", (int(strategy_id),))
+                cur.execute("SELECT strategy_name FROM qd_strategies_trading WHERE id = %s", (int(strategy_id),))
                 row = cur.fetchone() or {}
                 cur.close()
             return str(row.get("strategy_name") or "").strip()

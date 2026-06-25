@@ -175,20 +175,15 @@ services:
   # pull never need the `./QuantDinger-Vue/` directory to exist (Compose
   # validates build context paths eagerly when `build:` is present).
   frontend:
-    # Tag resolution (highest precedence wins):
-    #   FRONTEND_TAG   — per-side override, decouples FE from BE
-    #   IMAGE_TAG      — unified knob, sets both FE and BE (BE only relevant in ghcr.yml)
-    #   latest         — fallback; pin semver in project-root .env (e.g. IMAGE_TAG=3.0.10)
-    image: ${FRONTEND_IMAGE:-ghcr.io/brokermr810/quantdinger-frontend}:${FRONTEND_TAG:-${IMAGE_TAG:-latest}}
-    pull_policy: always
+    build:
+      context: ./QuantDinger
+      dockerfile: Dockerfile
+    image: quantdinger-frontend:local
     container_name: quantdinger-frontend
     restart: unless-stopped
     ports:
       - "${FRONTEND_PORT:-8888}:80"
     environment:
-      # nginx envsubst will inject this into the proxy_pass directive at start.
-      # Override with the backend's reachable URL when deploying outside compose
-      # (e.g. Railway: http://${{Backend.RAILWAY_PRIVATE_DOMAIN}}:5000).
       - BACKEND_URL=${BACKEND_URL:-http://backend:5000}
     depends_on:
       - backend
@@ -202,7 +197,8 @@ services:
 
 volumes:
   postgres_data:
-    driver: local
+    external: true
+    name: quantdinger_postgres_data
   backend_logs:
     driver: local
   backend_data:

@@ -4237,6 +4237,55 @@ class TradingExecutor:
                     qty -= amount
         return max(0.0, qty)
 
+    def _today_bought_qty_from_trade_rows(self, strategy_id: int, symbol: str, side: str) -> float:
+        """Calculate today's bought quantity from trade rows for T+1 check.
+
+        Returns the total quantity bought today (not yet sold) for a given symbol and side.
+        """
+        side_norm = (side or "").strip().lower()
+        if side_norm not in ("long", "short"):
+            return 0.0
+        sym_key = str(symbol or "").split(":")[0].strip()
+        try:
+            with get_db_connection() as db:
+                cursor = db.cursor()
+                cursor.execute(
+                    """
+                    SELECT symbol, type, amount, created_at
+                    FROM qd_strategy_trades
+                    WHERE strategy_id = %s
+                      AND DATE(created_at) = CURRENT_DATE
+                    ORDER BY id ASC
+                    """,
+                    (int(strategy_id),),
+                )
+                rows = cursor.fetchall() or []
+                cursor.close()
+        except Exception as e:
+            logger.warning(f"Failed to calculate today bought qty: strategy={strategy_id}, err={e}")
+            return 0.0
+
+        qty = 0.0
+        for row in rows:
+            row_symbol = str((row or {}).get("symbol") or "").split(":")[0].strip()
+            if row_symbol != sym_key:
+                continue
+            typ = str((row or {}).get("type") or "").strip().lower()
+            amount = float((row or {}).get("amount") or 0.0)
+            if amount <= 0:
+                continue
+            if side_norm == "long":
+                if typ in ("open_long", "add_long"):
+                    qty += amount
+                elif typ in ("close_long", "reduce_long"):
+                    qty -= amount
+            else:
+                if typ in ("open_short", "add_short"):
+                    qty += amount
+                elif typ in ("close_short", "reduce_short"):
+                    qty -= amount
+        return max(0.0, qty)
+
     def _execute_trading_logic(self, *args, **kwargs):
         """已废弃"""
         pass
@@ -4542,10 +4591,7 @@ class TradingExecutor:
                 if reduce_amount >= cur_size * 0.999:
                     sig = "close_long" if pos_side == "long" else "close_short"
                     signal_type = sig
-                    amount = cur_size
-                else:
-                    amount = reduce_amount
-            
+
 
             # 4. Execute order enqueue (PendingOrderWorker will dispatch notifications in signal mode)
             if 'close' in sig:
@@ -4617,6 +4663,20 @@ class TradingExecutor:
                     if sig.startswith("reduce_"):
                         sig = "close_long" if pos_side == "long" else "close_short"
                         signal_type = sig
+
+                if str(market_category or "").strip().lower() == "cnstock":
+                    today_bought_qty = self._today_bought_qty_from_trade_rows(strategy_id, symbol, pos_side)
+                    available_qty = open_qty - today_bought_qty
+                    if amount > available_qty + eps:
+                        append_strategy_log(
+                            strategy_id,
+                            "warning",
+                            (
+                                f"T+1限制: {sig} {symbol} 当日买入{today_bought_qty:.0f}股不可卖出, "
+                                f"可卖{available_qty:.0f}股, 请求卖出{amount:.0f}股, 已跳过"
+                            ),
+                        )
+                        return False
 
             if amount <= 0 and ('open' in signal_type or 'add' in signal_type):
                 return False

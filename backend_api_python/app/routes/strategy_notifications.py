@@ -19,7 +19,7 @@ logger = get_logger(__name__)
 def _current_user_strategy_ids(user_id: int) -> list[int]:
     with get_db_connection() as db:
         cur = db.cursor()
-        cur.execute("SELECT id FROM qd_strategies_trading WHERE user_id = ?", (user_id,))
+        cur.execute("SELECT id FROM qd_strategies_trading WHERE user_id = %s", (user_id,))
         rows = cur.fetchall() or []
         cur.close()
     return [r.get('id') for r in rows if r.get('id')]
@@ -32,19 +32,19 @@ def _user_notification_scope(user_id: int, strategy_id: int | None = None) -> tu
 
     if strategy_id:
         if strategy_id in user_strategy_ids:
-            where.append("strategy_id = ?")
+            where.append("strategy_id = %s")
             args.append(int(strategy_id))
         else:
             where.append("1 = 0")
         return where, args
 
     if user_strategy_ids:
-        placeholders = ",".join(["?"] * len(user_strategy_ids))
-        where.append(f"(strategy_id IN ({placeholders}) OR (strategy_id IS NULL AND user_id = ?))")
+        placeholders = ",".join(["%s"] * len(user_strategy_ids))
+        where.append(f"(strategy_id IN ({placeholders}) OR (strategy_id IS NULL AND user_id = %s))")
         args.extend(user_strategy_ids)
         args.append(user_id)
     else:
-        where.append("strategy_id IS NULL AND user_id = ?")
+        where.append("strategy_id IS NULL AND user_id = %s")
         args.append(user_id)
     return where, args
 
@@ -62,7 +62,7 @@ def get_strategy_notifications():
 
         where, args = _user_notification_scope(user_id, strategy_id)
         if since_id:
-            where.append("id > ?")
+            where.append("id > %s")
             args.append(int(since_id))
         where_sql = "WHERE " + " AND ".join(where)
 
@@ -74,7 +74,7 @@ def get_strategy_notifications():
                 FROM qd_strategy_notifications
                 {where_sql}
                 ORDER BY id DESC
-                LIMIT ?
+                LIMIT %s
                 """,
                 tuple(args + [int(limit)]),
             )
@@ -148,9 +148,9 @@ def mark_notification_read():
             cur.execute(
                 """
                 UPDATE qd_strategy_notifications SET is_read = 1
-                WHERE id = ? AND (
-                    strategy_id IN (SELECT id FROM qd_strategies_trading WHERE user_id = ?)
-                    OR (strategy_id IS NULL AND user_id = ?)
+                WHERE id = %s AND (
+                    strategy_id IN (SELECT id FROM qd_strategies_trading WHERE user_id = %s)
+                    OR (strategy_id IS NULL AND user_id = %s)
                 )
                 """,
                 (int(notification_id), user_id, user_id)
@@ -175,8 +175,8 @@ def mark_all_notifications_read():
             cur.execute(
                 """
                 UPDATE qd_strategy_notifications SET is_read = 1
-                WHERE strategy_id IN (SELECT id FROM qd_strategies_trading WHERE user_id = ?)
-                   OR (strategy_id IS NULL AND user_id = ?)
+                WHERE strategy_id IN (SELECT id FROM qd_strategies_trading WHERE user_id = %s)
+                   OR (strategy_id IS NULL AND user_id = %s)
                 """,
                 (user_id, user_id)
             )
@@ -200,8 +200,8 @@ def clear_notifications():
             cur.execute(
                 """
                 DELETE FROM qd_strategy_notifications
-                WHERE strategy_id IN (SELECT id FROM qd_strategies_trading WHERE user_id = ?)
-                   OR (strategy_id IS NULL AND user_id = ?)
+                WHERE strategy_id IN (SELECT id FROM qd_strategies_trading WHERE user_id = %s)
+                   OR (strategy_id IS NULL AND user_id = %s)
                 """,
                 (user_id, user_id)
             )
@@ -251,7 +251,7 @@ def send_manual_alert_notification():
 
             if strategy_id:
                 cur.execute(
-                    "SELECT strategy_name, notification_config FROM qd_strategies_trading WHERE id = ? AND user_id = ?",
+                    "SELECT strategy_name, notification_config FROM qd_strategies_trading WHERE id = %s AND user_id = %s",
                     (int(strategy_id), user_id)
                 )
                 row = cur.fetchone()
@@ -266,7 +266,7 @@ def send_manual_alert_notification():
                         except Exception:
                             pass
 
-            cur.execute("SELECT notification_settings, email, language FROM qd_users WHERE id = ?", (user_id,))
+            cur.execute("SELECT notification_settings, email, language FROM qd_users WHERE id = %s", (user_id,))
             user_row = cur.fetchone()
             cur.close()
 

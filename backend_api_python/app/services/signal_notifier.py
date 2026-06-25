@@ -329,7 +329,7 @@ def _load_user_timezone_for_strategy(strategy_id: int) -> str:
                 SELECT COALESCE(u.timezone, '') AS tz
                 FROM qd_strategies_trading s
                 JOIN qd_users u ON u.id = s.user_id
-                WHERE s.id = ?
+                WHERE s.id = %s
                 """,
                 (sid,),
             )
@@ -860,7 +860,7 @@ class SignalNotifier:
                     try:
                         with get_db_connection() as db:
                             cur = db.cursor()
-                            cur.execute("SELECT user_id FROM qd_strategies_trading WHERE id = ?", (int(strategy_id),))
+                            cur.execute("SELECT user_id FROM qd_strategies_trading WHERE id = %s", (int(strategy_id),))
                             row = cur.fetchone()
                             cur.close()
                         user_id = int((row or {}).get('user_id') or 1)
@@ -875,7 +875,7 @@ class SignalNotifier:
                     """
                     INSERT INTO qd_strategy_notifications
                     (user_id, strategy_id, symbol, signal_type, channels, title, message, payload_json, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
                     """,
                     (
                         int(user_id),
