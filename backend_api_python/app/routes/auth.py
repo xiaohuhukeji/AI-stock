@@ -135,11 +135,28 @@ def _build_userinfo(user: dict, user_id: int, username: str) -> dict:
 
 def _issue_login_token(user: dict, user_id: int, username: str) -> tuple:
     from app.services.user_service import get_user_service
+    from app.utils.cache import CacheManager
+    import time
+    cache = CacheManager()
+    lock_key = f"login_lock:{user_id}"
+    lock_ttl = 3
+    max_attempts = 10
+    attempt = 0
+    while attempt < max_attempts:
+        existing = cache.get(lock_key)
+        if existing:
+            attempt += 1
+            time.sleep(0.2)
+            continue
+        cache.set(lock_key, "1", ttl=lock_ttl)
+        break
     try:
         new_token_version = get_user_service().increment_token_version(user_id)
     except Exception as e:
         logger.warning(f"Failed to increment token_version: {e}")
         new_token_version = 1
+    finally:
+        cache.delete(lock_key)
 
     token = generate_token(
         user_id=user_id,
