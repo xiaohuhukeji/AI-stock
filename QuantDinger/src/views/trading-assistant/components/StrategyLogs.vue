@@ -44,38 +44,6 @@
       </div>
     </div>
 
-    <div v-if="manualAlertVisible && manualAlertData" class="manual-alert-panel">
-      <div class="alert-header">
-        <a-icon type="bell" class="alert-icon" />
-        <span class="alert-title">手动操作提示</span>
-        <a-button type="link" size="small" @click="manualAlertVisible = false">
-          <a-icon type="close" />
-        </a-button>
-      </div>
-      <div class="alert-content">
-        <div class="alert-row">
-          <span class="alert-label">标的</span>
-          <span class="alert-value">{{ manualAlertData.symbol }} {{ manualAlertData.name }}</span>
-        </div>
-        <div class="alert-row">
-          <span class="alert-label">当前价格</span>
-          <span class="alert-value price-value">{{ manualAlertData.price }}</span>
-        </div>
-        <div class="alert-row">
-          <span class="alert-label">提醒时间</span>
-          <span class="alert-value">{{ manualAlertData.alertTime }}</span>
-        </div>
-        <div class="alert-row">
-          <span class="alert-label">交易时段</span>
-          <span class="alert-value">{{ manualAlertData.session }}</span>
-        </div>
-        <div class="alert-tip">
-          <a-icon type="info-circle" />
-          <span>建议提前下单，避免开盘价波动影响成交</span>
-        </div>
-      </div>
-    </div>
-
     <div class="logs-container custom-scrollbar" ref="logsContainer">
       <div v-if="displayLogs.length === 0" class="logs-empty">
         <a-icon type="file-text" style="font-size: 32px; color: #ccc;" />
@@ -120,10 +88,6 @@ export default {
       refreshTimer: null,
       loading: false,
       clearing: false,
-      manualAlertVisible: false,
-      manualAlertData: null,
-      manualAlertTimer: null,
-      lastAlertTime: null,
       priceCache: {}
     }
   },
@@ -133,7 +97,6 @@ export default {
         { value: 'all', label: this.$t('trading-assistant.logs.level.all') || '全部', icon: 'bars' },
         { value: 'trade', label: this.$t('trading-assistant.logs.level.trade') || '交易', icon: 'transaction' },
         { value: 'signal', label: this.$t('trading-assistant.logs.level.signal') || '信号', icon: 'notification' },
-        { value: 'manual', label: this.$t('trading-assistant.logs.level.manual') || '手动操作提示', icon: 'bell' },
         { value: 'error', label: this.$t('trading-assistant.logs.level.error') || '错误', icon: 'warning' }
       ]
     },
@@ -170,11 +133,6 @@ export default {
     isSignalMode () {
       return String(this.executionMode || '').toLowerCase() !== 'live'
     },
-    isCNStockStrategy () {
-      if (!this.strategyInfo) return false
-      const cat = (this.strategyInfo.trading_config && this.strategyInfo.trading_config.market_type) || ''
-      return String(cat).toLowerCase() === 'cnstock' || /^\d{6}\.SH$|^\d{6}\.SZ$|^\d{6}$/.test(this.currentSymbol)
-    },
     currentSymbol () {
       return (this.strategyInfo && this.strategyInfo.trading_config && this.strategyInfo.trading_config.symbol) || ''
     }
@@ -185,20 +143,12 @@ export default {
         if (val) this.loadLogs()
       },
       immediate: true
-    },
-    strategyInfo: {
-      handler () {
-        this.startManualAlertCheck()
-      },
-      immediate: true
     }
   },
   mounted () {
-    this.startManualAlertCheck()
   },
   beforeDestroy () {
     this.stopAutoRefresh()
-    this.stopManualAlertCheck()
   },
   methods: {
     async loadLogs () {
@@ -258,7 +208,7 @@ export default {
     },
 
     getLevelColor (level) {
-      const map = { info: 'blue', warn: 'orange', error: 'red', trade: 'green', signal: 'purple', manual: 'gold' }
+      const map = { info: 'blue', warn: 'orange', error: 'red', trade: 'green', signal: 'purple' }
       return map[level] || 'default'
     },
 
@@ -298,146 +248,6 @@ export default {
           }
         }
       })
-    },
-
-    startManualAlertCheck () {
-      this.stopManualAlertCheck()
-      // 只支持 A股 手动信号模式.
-      if (!this.isCNStockStrategy) return
-      if (!this.isSignalMode) return
-      if (!this.currentSymbol) return
-      // 30s 轮询; K线开始的60s窗口内触发一次.
-      this.checkKlineBoundaryAlert()
-      this.manualAlertTimer = setInterval(() => {
-        this.checkKlineBoundaryAlert()
-      }, 30000)
-    },
-
-    stopManualAlertCheck () {
-      if (this.manualAlertTimer) {
-        clearInterval(this.manualAlertTimer)
-        this.manualAlertTimer = null
-      }
-    },
-
-    /**
-     * A股 K线开始时提醒（给用户 timeframe 分钟的时间在K线收盘前手动下单）.
-     * 仅工作日 & A股交易时段内触发.
-     *
-     *   - 15m K线: 9:30 开始 → 9:45 结束 → 在 9:30 提醒.
-     *   - 15m K线: 13:00 开始 → 13:15 结束 → 在 13:00 提醒.
-     */
-    checkKlineBoundaryAlert () {
-      const now = new Date()
-      const day = now.getDay()
-      // 周末不提醒.
-      if (day === 0 || day === 6) return
-
-      const hours = now.getHours()
-      const minutes = now.getMinutes()
-      const totalMinutes = hours * 60 + minutes
-      // A股交易时段: 上午 9:30-11:30, 下午 13:00-15:00.
-      const morningStart = 9 * 60 + 30
-      const morningEnd = 11 * 60 + 30
-      const afternoonStart = 13 * 60 + 0
-      const afternoonEnd = 15 * 60 + 0
-      const inTradingHours =
-        (totalMinutes >= morningStart && totalMinutes < morningEnd) ||
-        (totalMinutes >= afternoonStart && totalMinutes < afternoonEnd)
-      if (!inTradingHours) return
-
-      const nowTs = now.getTime()
-      const tfSec = this.timeframeSeconds
-      if (!tfSec || tfSec < 60) return
-
-      const nowSec = Math.floor(nowTs / 1000)
-      // K线边界按 Unix epoch 对齐.
-      const currentBarEnd = Math.floor(nowSec / tfSec) * tfSec
-      const currentBarStart = currentBarEnd - tfSec
-      const secSinceOpen = nowSec - currentBarStart
-      const secToClose = currentBarEnd - nowSec
-
-      // 提醒窗口 = K线开始后 60 秒内（刚开盘时）.
-      const windowSec = 60
-      const inAlertWindow = secSinceOpen >= 0 && secSinceOpen <= windowSec
-      if (!inAlertWindow) return
-
-      // 每个 (K线, 策略) 每个 bar 最多提醒一次.
-      const alertKey = `${this.currentSymbol}_${currentBarEnd}`
-      if (this.lastAlertTime === alertKey) return
-      this.lastAlertTime = alertKey
-
-      const minToClose = Math.floor(secToClose / 60)
-      this.showKlineAlert({
-        symbol: this.currentSymbol,
-        name: (this.strategyInfo && this.strategyInfo.strategy_name) || '',
-        timeframe: this.timeframe,
-        currentBarStart: this._formatTime(currentBarStart),
-        currentBarEnd: this._formatTime(currentBarEnd),
-        minToClose: minToClose,
-        nowDate: now
-      })
-    },
-
-    _formatTime (epochSec) {
-      const d = new Date(epochSec * 1000)
-      const hh = String(d.getHours()).padStart(2, '0')
-      const mm = String(d.getMinutes()).padStart(2, '0')
-      return `${hh}:${mm}`
-    },
-
-    async showKlineAlert (info) {
-      try {
-        const res = await request({
-          url: '/api/market/price',
-          method: 'get',
-          params: {
-            market: (this.strategyInfo.trading_config && this.strategyInfo.trading_config.market_type) || 'CNStock',
-            symbol: info.symbol
-          }
-        })
-        if (res && res.code === 1 && res.data) {
-          const price = parseFloat(res.data.price || 0)
-          if (price > 0) {
-            this.priceCache[info.symbol] = price
-            const alertTime = `${String(info.nowDate.getHours()).padStart(2, '0')}:${String(info.nowDate.getMinutes()).padStart(2, '0')}`
-            this.manualAlertData = {
-              symbol: info.symbol,
-              name: info.name,
-              price: price.toFixed(2),
-              alertTime: alertTime,
-              timeframe: info.timeframe,
-              barStart: info.currentBarStart,
-              barEnd: info.currentBarEnd,
-              minToClose: info.minToClose,
-              session: `${info.currentBarStart} - ${info.currentBarEnd}`
-            }
-            this.manualAlertVisible = true
-            this.$notification.warning({
-              message: '手动操作提示',
-              description: `${info.symbol} ${info.timeframe}K线将在 ${info.minToClose} 分钟后于 ${info.currentBarEnd} 收盘，当前价格：${price.toFixed(2)}，请提前手动下单`,
-              duration: 15
-            })
-            try {
-              await request({
-                url: '/api/strategies/notifications/manual-alert',
-                method: 'post',
-                data: {
-                  strategy_id: this.strategyId,
-                  symbol: info.symbol,
-                  price: price,
-                  session: `${info.timeframe} K线 (${info.currentBarStart}-${info.currentBarEnd})`,
-                  alert_time: alertTime
-                }
-              })
-            } catch (notifyErr) {
-              console.warn('Send manual alert notification failed:', notifyErr)
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('Get price failed:', e)
-      }
     }
   }
 }
