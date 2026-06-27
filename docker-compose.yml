@@ -143,8 +143,8 @@ services:
       # Include :8000 when using Vite dev server alongside this stack.
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:8888,http://localhost:8000}
       # Email / SMTP
-      - SMTP_HOST=${SMTP_HOST:-192.168.0.30}
-      - SMTP_PORT=${SMTP_PORT:-2525}
+      - SMTP_HOST=host.docker.internal
+      - SMTP_PORT=2525
       - SMTP_USER=${SMTP_USER:-2249808564@qq.com}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-wnogttglhfwmdhge}
       - SMTP_FROM=${SMTP_FROM:-2249808564@qq.com}
@@ -156,6 +156,7 @@ services:
       - 8.8.8.8
       - 114.114.114.114
     extra_hosts:
+      - "host.docker.internal:host-gateway"
       - "smtp.qq.com:203.205.219.163"
       - "smtp.gmail.com:142.250.101.108"
     healthcheck:
