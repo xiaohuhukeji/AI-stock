@@ -185,6 +185,26 @@ def _schedule_post_restore_position_sync() -> None:
     threading.Thread(target=_run, name="PostRestorePositionSync", daemon=True).start()
 
 
+def start_cnstock_scheduler():
+    """Start the CNStock (A-share) strategy scheduler.
+    
+    Automatically opens all CNStock strategies at Monday 9:00,
+    and closes them at Friday 15:30.
+    """
+    if os.getenv("ENABLE_CNSTOCK_SCHEDULER", "true").lower() != "true":
+        logger.info("CNStock scheduler is disabled. Set ENABLE_CNSTOCK_SCHEDULER=true to enable.")
+        return
+    if _is_debug_reloader_parent():
+        return
+    try:
+        from app.services.cnstock_scheduler import start_cnstock_scheduler
+        trading_executor = get_trading_executor()
+        start_cnstock_scheduler(executor=trading_executor)
+        logger.info("CNStock scheduler started (周一9:00开启, 周五15:30关闭)")
+    except Exception as e:
+        logger.error(f"Failed to start CNStock scheduler: {e}")
+
+
 def run_startup_hooks(app: Flask) -> None:
     """Run optional background startup hooks after route registration."""
     skip_hooks = os.getenv("SKIP_STARTUP_HOOKS", "").strip().lower() in (
@@ -208,3 +228,4 @@ def run_startup_hooks(app: Flask) -> None:
         except Exception:
             pass
         restore_running_strategies()
+        start_cnstock_scheduler()
