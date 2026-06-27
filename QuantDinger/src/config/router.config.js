@@ -21,13 +21,7 @@ export const asyncRouterMap = [
         component: () => import('@/views/ai-asset-analysis'),
         meta: { title: 'menu.dashboard.aiAssetAnalysis', keepAlive: true, icon: 'appstore', permission: ['dashboard'] }
       },
-      // AI stock screener for A-shares.
-      {
-        path: '/ai-stock-screener',
-        name: 'AIStockScreener',
-        component: () => import('@/views/ai-stock-screener'),
-        meta: { title: 'menu.dashboard.aiStockScreener', keepAlive: true, icon: 'stock', permission: ['dashboard'] }
-      },
+
       // Unified strategy workspace entry.
       {
         path: '/strategy-center',

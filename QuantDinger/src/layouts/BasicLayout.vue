@@ -485,14 +485,7 @@ export default {
           paths: ['/ai-asset-analysis'],
           singleAsItem: true
         },
-        {
-          name: 'MenuGroupAIStockScreener',
-          path: '/menu-group/ai-stock-screener',
-          title: this.$t('menu.dashboard.aiStockScreener') || 'AI Stock Screener',
-          icon: 'stock',
-          paths: ['/ai-stock-screener'],
-          singleAsItem: true
-        },
+
         {
           name: 'MenuGroupMarket',
           path: '/menu-group/market-data',
