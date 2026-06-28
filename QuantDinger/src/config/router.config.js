@@ -21,6 +21,12 @@ export const asyncRouterMap = [
         component: () => import('@/views/ai-asset-analysis'),
         meta: { title: 'menu.dashboard.aiAssetAnalysis', keepAlive: true, icon: 'appstore', permission: ['dashboard'] }
       },
+      {
+        path: '/kronos-predict',
+        name: 'KronosPredict',
+        component: () => import('@/views/kronos-predict'),
+        meta: { title: 'menu.kronosPredict', keepAlive: false, icon: 'magic-stick', permission: ['dashboard'] }
+      },
 
       // Unified strategy workspace entry.
       {

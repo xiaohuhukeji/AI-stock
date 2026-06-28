@@ -284,13 +284,20 @@ class FeedForward(nn.Module):
 class RotaryPositionalEmbedding(nn.Module):
     def __init__(self, dim):
         super().__init__()
+        self.dim = dim
         inv_freq = 1.0 / (10000 ** (torch.arange(0, dim, 2).float() / dim))
         self.register_buffer("inv_freq", inv_freq)
         self.seq_len_cached = None
         self.cos_cached = None
         self.sin_cached = None
 
+    def _ensure_inv_freq(self, device):
+        if self.inv_freq is None:
+            inv_freq = 1.0 / (10000 ** (torch.arange(0, self.dim, 2).float().to(device) / self.dim))
+            self.register_buffer("inv_freq", inv_freq)
+
     def _update_cos_sin_cache(self, x, seq_len):
+        self._ensure_inv_freq(x.device)
         if seq_len != self.seq_len_cached:
             self.seq_len_cached = seq_len
             t = torch.arange(seq_len, device=x.device).type_as(self.inv_freq)

@@ -69,13 +69,17 @@ COPY docker-entrypoint.sh /usr/local/bin/
 RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
     && chmod +x /usr/local/bin/docker-entrypoint.sh
 
-RUN mkdir -p logs data/memory
+RUN mkdir -p logs data/memory kronos_models
 
 EXPOSE 5000
 
 ENV PYTHONUNBUFFERED=1
 ENV PYTHON_API_HOST=0.0.0.0
 ENV PYTHON_API_PORT=5000
+ENV KRONOS_MODEL=NeoQuasar/Kronos-small
+ENV KRONOS_TOKENIZER=NeoQuasar/Kronos-Tokenizer-base
+ENV KRONOS_DEVICE=cpu
+ENV KRONOS_MAX_CONTEXT=512
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["gunicorn", "-c", "gunicorn_config.py", "run:app"]

@@ -3563,6 +3563,7 @@ const locale = {
   'menu.userManage': '用户管理',
   'menu.agentTokens': 'Agent 令牌',
   'menu.aiSkills': 'AI 技能中心',
+  'menu.kronosPredict': 'Kronos AI 预测',
   'menu.myProfile': '个人中心',
   'common.actions': '操作',
   'common.refresh': '刷新',

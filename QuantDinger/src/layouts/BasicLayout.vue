@@ -485,6 +485,14 @@ export default {
           paths: ['/ai-asset-analysis'],
           singleAsItem: true
         },
+        {
+          name: 'MenuGroupKronos',
+          path: '/menu-group/kronos-predict',
+          title: this.$t('menu.kronosPredict') || 'Kronos AI Predict',
+          icon: 'magic-stick',
+          paths: ['/kronos-predict'],
+          singleAsItem: true
+        },
 
         {
           name: 'MenuGroupMarket',
