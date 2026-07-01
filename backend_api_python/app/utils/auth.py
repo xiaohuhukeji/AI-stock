@@ -121,14 +121,6 @@ def _verify_token_version(user_id: int, token_version: int) -> bool:
         True if version matches, False otherwise
     """
     try:
-        from app.utils.cache import CacheManager
-        cache = CacheManager()
-        cache_key = f"token_version:{user_id}"
-        
-        cached = cache.get(cache_key)
-        if cached is not None:
-            return int(token_version) == int(cached)
-        
         from app.utils.db import get_db_connection
         with get_db_connection() as db:
             cur = db.cursor()
@@ -143,7 +135,6 @@ def _verify_token_version(user_id: int, token_version: int) -> bool:
                 return False
             
             db_token_version = row.get('token_version') or 1
-            cache.set(cache_key, int(db_token_version), ttl=60)
             return int(token_version) == int(db_token_version)
     except Exception as e:
         logger.error(f"_verify_token_version failed: {e}")

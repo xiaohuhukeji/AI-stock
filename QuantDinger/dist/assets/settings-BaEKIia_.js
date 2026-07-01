@@ -1,1 +1,0 @@
-import{r as t}from"./index-B1Ccy7EP.js";function n(){return t({url:"/api/settings/schema",method:"get"})}function a(){return t({url:"/api/settings/values",method:"get"})}function r(e){return t({url:"/api/settings/save",method:"post",data:e})}function u(){return t({url:"/api/settings/openrouter-balance",method:"get"})}export{u as a,n as b,a as g,r as s};

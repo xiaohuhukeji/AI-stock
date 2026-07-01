@@ -106,9 +106,8 @@ services:
     volumes:
       - backend_logs:/app/logs
       - backend_data:/app/data
+      # Mount .env for runtime config and admin-panel updates
       - ./backend_api_python/.env:/app/.env
-      - ./Kronos:/app/Kronos
-      - kronos_models:/app/kronos_models
     environment:
       - PYTHON_API_HOST=0.0.0.0
       - PYTHON_API_PORT=5000
@@ -119,10 +118,6 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - CACHE_ENABLED=true
-      - KRONOS_MODEL=${KRONOS_MODEL:-NeoQuasar/Kronos-small}
-      - KRONOS_TOKENIZER=${KRONOS_TOKENIZER:-NeoQuasar/Kronos-Tokenizer-base}
-      - KRONOS_DEVICE=${KRONOS_DEVICE:-cpu}
-      - KRONOS_MAX_CONTEXT=${KRONOS_MAX_CONTEXT:-512}
       # Database connection pool tuning (see app/utils/db_postgres.py).
       # Defaults are safe for ~50 concurrent DB users; raise if you run many
       # bots or see `connection pool exhausted` errors.
@@ -148,8 +143,8 @@ services:
       # Include :8000 when using Vite dev server alongside this stack.
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:8888,http://localhost:8000}
       # Email / SMTP
-      - SMTP_HOST=host.docker.internal
-      - SMTP_PORT=2525
+      - SMTP_HOST=${SMTP_HOST:-192.168.0.30}
+      - SMTP_PORT=${SMTP_PORT:-2525}
       - SMTP_USER=${SMTP_USER:-2249808564@qq.com}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-wnogttglhfwmdhge}
       - SMTP_FROM=${SMTP_FROM:-2249808564@qq.com}
@@ -161,7 +156,6 @@ services:
       - 8.8.8.8
       - 114.114.114.114
     extra_hosts:
-      - "host.docker.internal:host-gateway"
       - "smtp.qq.com:203.205.219.163"
       - "smtp.gmail.com:142.250.101.108"
     healthcheck:
@@ -181,15 +175,20 @@ services:
   # pull never need the `./QuantDinger-Vue/` directory to exist (Compose
   # validates build context paths eagerly when `build:` is present).
   frontend:
-    build:
-      context: ./QuantDinger
-      dockerfile: Dockerfile
-    image: quantdinger-frontend:local
+    # Tag resolution (highest precedence wins):
+    #   FRONTEND_TAG   — per-side override, decouples FE from BE
+    #   IMAGE_TAG      — unified knob, sets both FE and BE (BE only relevant in ghcr.yml)
+    #   latest         — fallback; pin semver in project-root .env (e.g. IMAGE_TAG=3.0.10)
+    image: ${FRONTEND_IMAGE:-ghcr.io/brokermr810/quantdinger-frontend}:${FRONTEND_TAG:-${IMAGE_TAG:-latest}}
+    pull_policy: always
     container_name: quantdinger-frontend
     restart: unless-stopped
     ports:
       - "${FRONTEND_PORT:-8888}:80"
     environment:
+      # nginx envsubst will inject this into the proxy_pass directive at start.
+      # Override with the backend's reachable URL when deploying outside compose
+      # (e.g. Railway: http://${{Backend.RAILWAY_PRIVATE_DOMAIN}}:5000).
       - BACKEND_URL=${BACKEND_URL:-http://backend:5000}
     depends_on:
       - backend
@@ -203,13 +202,10 @@ services:
 
 volumes:
   postgres_data:
-    external: true
-    name: quantdinger_postgres_data
+    driver: local
   backend_logs:
     driver: local
   backend_data:
-    driver: local
-  kronos_models:
     driver: local
 
 networks:

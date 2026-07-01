@@ -106,20 +106,6 @@ def _normalize_for_match(market: str, symbol: str) -> str:
     if not m or not s:
         return s
 
-    if m == 'CNStock':
-        if s.startswith('SH') or s.startswith('SZ'):
-            return s[2:]
-        if s.endswith('.SH') or s.endswith('.SS'):
-            return s[:-3]
-        if s.endswith('.SZ'):
-            return s[:-3]
-
-    if m == 'HKStock':
-        if s.startswith('HK'):
-            return s[2:]
-        if s.endswith('.HK'):
-            return s[:-3]
-
     return s
 
 
@@ -129,7 +115,7 @@ def get_symbol_name(market: str, symbol: str) -> Optional[str]:
     
     Args:
         market: Market name
-        symbol: Symbol (e.g., 'AAPL', 'BTC/USDT', '600519', 'SZ002141')
+        symbol: Symbol (e.g., 'AAPL', 'BTC/USDT', '600519')
         
     Returns:
         Symbol name or None if not found
@@ -142,17 +128,10 @@ def get_symbol_name(market: str, symbol: str) -> Optional[str]:
     if not s:
         return None
 
+    # Crypto: allow user to pass BTC (try BTC/USDT) or full pair
     candidate_symbols = [s]
     if m == 'Crypto' and '/' not in s:
         candidate_symbols.append(f"{s}/USDT")
-
-    original_symbol = (symbol or '').strip().upper()
-    if original_symbol and original_symbol != s:
-        candidate_symbols.insert(0, original_symbol)
-
-    if m == 'CNStock' and s.isdigit() and len(s) == 6:
-        candidate_symbols.append(f"SH{s}")
-        candidate_symbols.append(f"SZ{s}")
 
     try:
         with _get_db_connection() as db:

@@ -427,26 +427,6 @@ def add_watchlist():
         # underlying pair. Other markets pass through unchanged.
         if market == 'Crypto':
             symbol = normalize_crypto_symbol(symbol)
-        
-        # Canonicalise CNStock to 6-digit format (002141 instead of SZ002141 / 002141.SZ)
-        if market == 'CNStock':
-            from app.data_sources.tencent import normalize_cn_code
-            normalized = normalize_cn_code(symbol)
-            if normalized and (normalized.startswith('SH') or normalized.startswith('SZ')):
-                symbol = normalized[2:]
-            elif symbol.endswith('.SH') or symbol.endswith('.SZ') or symbol.endswith('.SS'):
-                symbol = symbol[:-3]
-            symbol = symbol.upper()
-        
-        # Canonicalise HKStock to 5-digit format (00700 instead of HK00700 / 00700.HK)
-        if market == 'HKStock':
-            from app.data_sources.tencent import normalize_hk_code
-            normalized = normalize_hk_code(symbol)
-            if normalized and normalized.startswith('HK'):
-                symbol = normalized[2:]
-            elif symbol.endswith('.HK'):
-                symbol = symbol[:-3]
-            symbol = symbol.zfill(5)
 
         # Reject implausible (market, symbol) pairs at the edge. Without this,
         # the frontend's "search returned nothing → reuse current tab as market"
@@ -475,23 +455,12 @@ def add_watchlist():
             resolved = seed_get_symbol_name(market, symbol)
 
         if not resolved and market in _NAME_REQUIRED_MARKETS:
-            if market == 'CNStock' and symbol.isdigit() and len(symbol) == 6:
-                if symbol.startswith('6') or symbol.startswith('0') or symbol.startswith('3'):
-                    logger.info(f"Allowing valid CNStock symbol {symbol} without name resolution")
-                else:
-                    err = (
-                        f"Symbol '{symbol}' not found on {market}. "
-                        f"Please verify the ticker and market, or pick from search results."
-                    )
-                    logger.info("Rejecting watchlist add for user %s: %s", user_id, err)
-                    return jsonify({'code': 0, 'msg': err, 'data': None}), 400
-            else:
-                err = (
-                    f"Symbol '{symbol}' not found on {market}. "
-                    f"Please verify the ticker and market, or pick from search results."
-                )
-                logger.info("Rejecting watchlist add for user %s: %s", user_id, err)
-                return jsonify({'code': 0, 'msg': err, 'data': None}), 400
+            err = (
+                f"Symbol '{symbol}' not found on {market}. "
+                f"Please verify the ticker and market, or pick from search results."
+            )
+            logger.info("Rejecting watchlist add for user %s: %s", user_id, err)
+            return jsonify({'code': 0, 'msg': err, 'data': None}), 400
 
         # Prefer frontend-provided name (already shown to the user in the
         # search result list); fall back to the resolved name; finally the

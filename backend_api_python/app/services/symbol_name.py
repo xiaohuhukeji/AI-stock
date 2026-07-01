@@ -219,38 +219,29 @@ def resolve_symbol_name(market: str, symbol: str) -> Optional[str]:
     3) Reasonable fallback (None)
     """
     m = (market or '').strip()
-    s = (symbol or '').strip()
+    s = _normalize_symbol_for_market(m, symbol)
     if not m or not s:
         return None
 
-    normalized = _normalize_symbol_for_market(m, s)
-
+    # 1) Seed (already in our DB — nothing to learn, just return).
     seed = seed_get_symbol_name(m, s)
     if seed:
         return seed
-
-    if m in ('CNStock', 'HKStock') and s != normalized:
-        seed_normalized = seed_get_symbol_name(m, normalized)
-        if seed_normalized:
-            return seed_normalized
-
-    if not normalized:
-        return None
 
     # 2) Market-specific external resolution. Every successful external hit is
     # written back to the seed table so the next request for the same symbol
     # can short-circuit through step 1 instead of paying for the network call
     # again. Writes are best-effort (failures swallowed inside persist_seed_name).
     if m == 'USStock':
-        ext = _resolve_name_from_finnhub(normalized) or _resolve_name_from_yfinance(normalized)
+        ext = _resolve_name_from_finnhub(s) or _resolve_name_from_yfinance(s)
         if ext:
             persist_seed_name(m, s, ext)
-            return ext
+        return ext
 
     if m in ('CNStock', 'HKStock'):
         try:
             from app.data_sources.tencent import fetch_quote
-            parts = fetch_quote(normalized)
+            parts = fetch_quote(s)
             if parts and len(parts) > 1 and parts[1]:
                 ext = str(parts[1]).strip()
                 if ext:
@@ -258,7 +249,7 @@ def resolve_symbol_name(market: str, symbol: str) -> Optional[str]:
                     return ext
         except Exception:
             pass
-        ext = _resolve_name_from_yfinance(normalized)
+        ext = _resolve_name_from_yfinance(s)
         if ext:
             persist_seed_name(m, s, ext)
         return ext

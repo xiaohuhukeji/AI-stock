@@ -478,22 +478,13 @@ export default {
       const visibleRoutes = routes.filter(route => !route.hidden && !accountMenuPaths.includes(route.path))
       const groups = [
         {
-          name: 'MenuGroupAIAsset',
-          path: '/menu-group/ai-asset-analysis',
-          title: this.$t('menu.dashboard.aiAssetAnalysis') || 'AI Asset Analysis',
-          icon: 'appstore',
+          name: 'MenuGroupAI',
+          path: '/menu-group/ai-workspace',
+          title: this.$t('menu.group.aiWorkspace') || 'AI Workspace',
+          icon: 'thunderbolt',
           paths: ['/ai-asset-analysis'],
           singleAsItem: true
         },
-        {
-          name: 'MenuGroupKronos',
-          path: '/menu-group/kronos-predict',
-          title: this.$t('menu.kronosPredict') || 'Kronos AI Predict',
-          icon: 'magic-stick',
-          paths: ['/kronos-predict'],
-          singleAsItem: true
-        },
-
         {
           name: 'MenuGroupMarket',
           path: '/menu-group/market-data',

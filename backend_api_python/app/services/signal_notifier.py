@@ -329,7 +329,7 @@ def _load_user_timezone_for_strategy(strategy_id: int) -> str:
                 SELECT COALESCE(u.timezone, '') AS tz
                 FROM qd_strategies_trading s
                 JOIN qd_users u ON u.id = s.user_id
-                WHERE s.id = %s
+                WHERE s.id = ?
                 """,
                 (sid,),
             )
@@ -854,27 +854,28 @@ class SignalNotifier:
     ) -> Tuple[bool, str]:
         try:
             now = int(time.time())
+            # Get user_id from strategy if not provided
+            if user_id is None:
+                if strategy_id is not None:
+                    try:
+                        with get_db_connection() as db:
+                            cur = db.cursor()
+                            cur.execute("SELECT user_id FROM qd_strategies_trading WHERE id = ?", (int(strategy_id),))
+                            row = cur.fetchone()
+                            cur.close()
+                        user_id = int((row or {}).get('user_id') or 1)
+                    except Exception:
+                        user_id = 1
+                else:
+                    user_id = 1
             sid = None if strategy_id is None else int(strategy_id)
-            
             with get_db_connection() as db:
                 cur = db.cursor()
-                
-                if user_id is None:
-                    if strategy_id is not None:
-                        try:
-                            cur.execute("SELECT user_id FROM qd_strategies_trading WHERE id = %s", (sid,))
-                            row = cur.fetchone()
-                            user_id = int((row or {}).get('user_id') or 1)
-                        except Exception:
-                            user_id = 1
-                    else:
-                        user_id = 1
-                
                 cur.execute(
                     """
                     INSERT INTO qd_strategy_notifications
                     (user_id, strategy_id, symbol, signal_type, channels, title, message, payload_json, created_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
                     """,
                     (
                         int(user_id),

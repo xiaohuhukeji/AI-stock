@@ -49,18 +49,10 @@ def normalize_cn_code(symbol: str) -> str:
     Accepts:
     - 600519 / 600519.SH / 600519.SS
     - 000001 / 000001.SZ
-    - SH600519 / SZ000001
     """
     s = (symbol or "").strip().upper()
     if not s:
         return s
-
-    if s.startswith("SH") and len(s) == 8 and s[2:].isdigit():
-        return s
-
-    if s.startswith("SZ") and len(s) == 8 and s[2:].isdigit():
-        return s
-
     if s.endswith(".SH"):
         s = s[:-3]
         return f"SH{s}"

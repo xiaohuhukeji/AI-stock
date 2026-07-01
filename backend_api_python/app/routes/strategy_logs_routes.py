@@ -35,11 +35,11 @@ def get_strategy_logs():
             cur = db.cursor()
             cur.execute(
                 """
-                SELECT id, strategy_id, level, message, timestamp, reference_price
+                SELECT id, strategy_id, level, message, timestamp
                 FROM qd_strategy_logs
-                WHERE strategy_id = %s
+                WHERE strategy_id = ?
                 ORDER BY id DESC
-                LIMIT %s
+                LIMIT ?
                 """,
                 (int(strategy_id), limit)
             )

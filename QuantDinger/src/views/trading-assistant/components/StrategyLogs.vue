@@ -44,6 +44,38 @@
       </div>
     </div>
 
+    <div v-if="manualAlertVisible && manualAlertData" class="manual-alert-panel">
+      <div class="alert-header">
+        <a-icon type="bell" class="alert-icon" />
+        <span class="alert-title">手动操作提示</span>
+        <a-button type="link" size="small" @click="manualAlertVisible = false">
+          <a-icon type="close" />
+        </a-button>
+      </div>
+      <div class="alert-content">
+        <div class="alert-row">
+          <span class="alert-label">标的</span>
+          <span class="alert-value">{{ manualAlertData.symbol }} {{ manualAlertData.name }}</span>
+        </div>
+        <div class="alert-row">
+          <span class="alert-label">当前价格</span>
+          <span class="alert-value price-value">{{ manualAlertData.price }}</span>
+        </div>
+        <div class="alert-row">
+          <span class="alert-label">提醒时间</span>
+          <span class="alert-value">{{ manualAlertData.alertTime }}</span>
+        </div>
+        <div class="alert-row">
+          <span class="alert-label">交易时段</span>
+          <span class="alert-value">{{ manualAlertData.session }}</span>
+        </div>
+        <div class="alert-tip">
+          <a-icon type="info-circle" />
+          <span>建议提前下单，避免开盘价波动影响成交</span>
+        </div>
+      </div>
+    </div>
+
     <div class="logs-container custom-scrollbar" ref="logsContainer">
       <div v-if="displayLogs.length === 0" class="logs-empty">
         <a-icon type="file-text" style="font-size: 32px; color: #ccc;" />
@@ -60,10 +92,6 @@
           {{ getLevelText(log.level) }}
         </a-tag>
         <span class="log-message">{{ log.message }}</span>
-        <span v-if="log.reference_price && log.reference_price > 0" class="log-reference-price">
-          <span class="ref-price-label">参考价:</span>
-          <span class="ref-price-value">{{ log.reference_price.toFixed(2) }}</span>
-        </span>
       </div>
     </div>
   </div>
@@ -88,6 +116,10 @@ export default {
       refreshTimer: null,
       loading: false,
       clearing: false,
+      manualAlertVisible: false,
+      manualAlertData: null,
+      manualAlertTimer: null,
+      lastAlertTime: null,
       priceCache: {}
     }
   },
@@ -97,6 +129,7 @@ export default {
         { value: 'all', label: this.$t('trading-assistant.logs.level.all') || '全部', icon: 'bars' },
         { value: 'trade', label: this.$t('trading-assistant.logs.level.trade') || '交易', icon: 'transaction' },
         { value: 'signal', label: this.$t('trading-assistant.logs.level.signal') || '信号', icon: 'notification' },
+        { value: 'manual', label: this.$t('trading-assistant.logs.level.manual') || '手动操作提示', icon: 'bell' },
         { value: 'error', label: this.$t('trading-assistant.logs.level.error') || '错误', icon: 'warning' }
       ]
     },
@@ -108,30 +141,10 @@ export default {
     displayLogs () {
       return this.filteredLogs.slice()
     },
-    /** Strategy execution mode: 'live' = auto trade, 'signal' = manual only. */
-    executionMode () {
-      return (this.strategyInfo && this.strategyInfo.execution_mode) || 'signal'
-    },
-    /** K线周期 (e.g., "15m", "1H"). Default to "15m" if missing. */
-    timeframe () {
-      return (this.strategyInfo && this.strategyInfo.trading_config && this.strategyInfo.trading_config.timeframe) || '15m'
-    },
-    /** Convert timeframe string to seconds. */
-    timeframeSeconds () {
-      const tf = String(this.timeframe || '15m').trim().toLowerCase()
-      const m = /^(\d+)\s*(s|m|h|d)$/.exec(tf)
-      if (!m) return 900
-      const n = parseInt(m[1], 10)
-      const unit = m[2]
-      if (unit === 's') return n
-      if (unit === 'm') return n * 60
-      if (unit === 'h') return n * 3600
-      if (unit === 'd') return n * 86400
-      return 900
-    },
-    /** Whether this strategy is in "signal-only" mode (manual trading). */
-    isSignalMode () {
-      return String(this.executionMode || '').toLowerCase() !== 'live'
+    isCNStockStrategy () {
+      if (!this.strategyInfo) return false
+      const cat = (this.strategyInfo.trading_config && this.strategyInfo.trading_config.market_type) || ''
+      return String(cat).toLowerCase() === 'cnstock' || /^\d{6}$/.test(this.currentSymbol)
     },
     currentSymbol () {
       return (this.strategyInfo && this.strategyInfo.trading_config && this.strategyInfo.trading_config.symbol) || ''
@@ -143,12 +156,20 @@ export default {
         if (val) this.loadLogs()
       },
       immediate: true
+    },
+    strategyInfo: {
+      handler () {
+        this.startManualAlertCheck()
+      },
+      immediate: true
     }
   },
   mounted () {
+    this.startManualAlertCheck()
   },
   beforeDestroy () {
     this.stopAutoRefresh()
+    this.stopManualAlertCheck()
   },
   methods: {
     async loadLogs () {
@@ -208,7 +229,7 @@ export default {
     },
 
     getLevelColor (level) {
-      const map = { info: 'blue', warn: 'orange', error: 'red', trade: 'green', signal: 'purple' }
+      const map = { info: 'blue', warn: 'orange', error: 'red', trade: 'green', signal: 'purple', manual: 'gold' }
       return map[level] || 'default'
     },
 
@@ -248,6 +269,93 @@ export default {
           }
         }
       })
+    },
+
+    startManualAlertCheck () {
+      this.stopManualAlertCheck()
+      if (!this.isCNStockStrategy || !this.currentSymbol) return
+      this.checkCNStockAlertTime()
+      this.manualAlertTimer = setInterval(() => {
+        this.checkCNStockAlertTime()
+      }, 30000)
+    },
+
+    stopManualAlertCheck () {
+      if (this.manualAlertTimer) {
+        clearInterval(this.manualAlertTimer)
+        this.manualAlertTimer = null
+      }
+    },
+
+    checkCNStockAlertTime () {
+      const now = new Date()
+      const day = now.getDay()
+      if (day === 0 || day === 6) return
+      const hours = now.getHours()
+      const minutes = now.getMinutes()
+      const totalMinutes = hours * 60 + minutes
+      const morningAlert = 9 * 60 + 15
+      const afternoonAlert = 13 * 60 + 0
+      if (totalMinutes >= morningAlert && totalMinutes < 9 * 60 + 30) {
+        this.showManualAlert('上午盘', now)
+      } else if (totalMinutes >= afternoonAlert && totalMinutes < 13 * 60 + 15) {
+        this.showManualAlert('下午盘', now)
+      } else {
+        this.manualAlertVisible = false
+      }
+    },
+
+    async showManualAlert (session, now) {
+      const alertKey = `${session}_${now.getDate()}`
+      if (this.lastAlertTime === alertKey) return
+      this.lastAlertTime = alertKey
+      try {
+        const res = await request({
+          url: '/api/market/price',
+          method: 'get',
+          params: {
+            market: 'CNStock',
+            symbol: this.currentSymbol
+          }
+        })
+        if (res && res.code === 1 && res.data) {
+          const price = parseFloat(res.data.price || 0)
+          if (price > 0) {
+            this.priceCache[this.currentSymbol] = price
+            const alertTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
+            this.manualAlertData = {
+              symbol: this.currentSymbol,
+              name: (this.strategyInfo && this.strategyInfo.strategy_name) || '',
+              price: price.toFixed(2),
+              alertTime: alertTime,
+              session: session === '上午盘' ? '09:30 - 11:30' : '13:00 - 15:00'
+            }
+            this.manualAlertVisible = true
+            this.$notification.warning({
+              message: '手动操作提示',
+              description: `A股${session}即将开始，当前价格：${price.toFixed(2)}，建议提前下单`,
+              duration: 15
+            })
+            try {
+              await request({
+                url: '/api/strategies/notifications/manual-alert',
+                method: 'post',
+                data: {
+                  strategy_id: this.strategyId,
+                  symbol: this.currentSymbol,
+                  price: price,
+                  session: session,
+                  alert_time: alertTime
+                }
+              })
+            } catch (notifyErr) {
+              console.warn('Send manual alert notification failed:', notifyErr)
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Get CNStock price failed:', e)
+      }
     }
   }
 }
@@ -474,29 +582,6 @@ export default {
   word-break: break-all;
 }
 
-.log-reference-price {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex-shrink: 0;
-  padding: 2px 6px;
-  background: linear-gradient(135deg, #e6f7ff, #f0f5ff);
-  border: 1px solid #91d5ff;
-  border-radius: 4px;
-  font-size: 11px;
-
-  .ref-price-label {
-    color: #1890ff;
-    font-weight: 500;
-  }
-
-  .ref-price-value {
-    color: #1890ff;
-    font-weight: 600;
-    font-family: 'Fira Code', 'Consolas', monospace;
-  }
-}
-
 .manual-alert-panel {
   background: linear-gradient(135deg, #fffbe6, #fff7e6);
   border: 1px solid #ffe58f;
@@ -684,19 +769,6 @@ export default {
 
   .log-message {
     color: rgba(255, 255, 255, 0.75);
-  }
-
-  .log-reference-price {
-    background: rgba(24, 144, 255, 0.1);
-    border-color: rgba(24, 144, 255, 0.3);
-
-    .ref-price-label {
-      color: #40a9ff;
-    }
-
-    .ref-price-value {
-      color: #40a9ff;
-    }
   }
 
   .manual-alert-panel {

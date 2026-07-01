@@ -630,11 +630,6 @@ class UserService:
                 cur.close()
                 
                 new_version = int(row.get('token_version') or 1) if row else 1
-                try:
-                    from app.utils.cache import CacheManager
-                    CacheManager().delete(f"token_version:{user_id}")
-                except Exception:
-                    pass
                 logger.info("Incremented token_version for user")
                 return new_version
         except Exception as e:
