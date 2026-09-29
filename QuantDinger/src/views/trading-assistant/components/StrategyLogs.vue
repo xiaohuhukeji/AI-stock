@@ -44,38 +44,6 @@
       </div>
     </div>
 
-    <div v-if="manualAlertVisible && manualAlertData" class="manual-alert-panel">
-      <div class="alert-header">
-        <a-icon type="bell" class="alert-icon" />
-        <span class="alert-title">手动操作提示</span>
-        <a-button type="link" size="small" @click="manualAlertVisible = false">
-          <a-icon type="close" />
-        </a-button>
-      </div>
-      <div class="alert-content">
-        <div class="alert-row">
-          <span class="alert-label">标的</span>
-          <span class="alert-value">{{ manualAlertData.symbol }} {{ manualAlertData.name }}</span>
-        </div>
-        <div class="alert-row">
-          <span class="alert-label">当前价格</span>
-          <span class="alert-value price-value">{{ manualAlertData.price }}</span>
-        </div>
-        <div class="alert-row">
-          <span class="alert-label">提醒时间</span>
-          <span class="alert-value">{{ manualAlertData.alertTime }}</span>
-        </div>
-        <div class="alert-row">
-          <span class="alert-label">交易时段</span>
-          <span class="alert-value">{{ manualAlertData.session }}</span>
-        </div>
-        <div class="alert-tip">
-          <a-icon type="info-circle" />
-          <span>建议提前下单，避免开盘价波动影响成交</span>
-        </div>
-      </div>
-    </div>
-
     <div class="logs-container custom-scrollbar" ref="logsContainer">
       <div v-if="displayLogs.length === 0" class="logs-empty">
         <a-icon type="file-text" style="font-size: 32px; color: #ccc;" />
@@ -105,8 +73,7 @@ export default {
   name: 'StrategyLogs',
   props: {
     strategyId: { type: [Number, String], default: null },
-    isDark: { type: Boolean, default: false },
-    strategyInfo: { type: Object, default: null }
+    isDark: { type: Boolean, default: false }
   },
   data () {
     return {
@@ -115,12 +82,7 @@ export default {
       autoRefresh: false,
       refreshTimer: null,
       loading: false,
-      clearing: false,
-      manualAlertVisible: false,
-      manualAlertData: null,
-      manualAlertTimer: null,
-      lastAlertTime: null,
-      priceCache: {}
+      clearing: false
     }
   },
   computed: {
@@ -129,7 +91,6 @@ export default {
         { value: 'all', label: this.$t('trading-assistant.logs.level.all') || '全部', icon: 'bars' },
         { value: 'trade', label: this.$t('trading-assistant.logs.level.trade') || '交易', icon: 'transaction' },
         { value: 'signal', label: this.$t('trading-assistant.logs.level.signal') || '信号', icon: 'notification' },
-        { value: 'manual', label: this.$t('trading-assistant.logs.level.manual') || '手动操作提示', icon: 'bell' },
         { value: 'error', label: this.$t('trading-assistant.logs.level.error') || '错误', icon: 'warning' }
       ]
     },
@@ -140,14 +101,6 @@ export default {
     /** Newest entries first (API returns id DESC). */
     displayLogs () {
       return this.filteredLogs.slice()
-    },
-    isCNStockStrategy () {
-      if (!this.strategyInfo) return false
-      const cat = (this.strategyInfo.trading_config && this.strategyInfo.trading_config.market_type) || ''
-      return String(cat).toLowerCase() === 'cnstock' || /^\d{6}$/.test(this.currentSymbol)
-    },
-    currentSymbol () {
-      return (this.strategyInfo && this.strategyInfo.trading_config && this.strategyInfo.trading_config.symbol) || ''
     }
   },
   watch: {
@@ -156,20 +109,10 @@ export default {
         if (val) this.loadLogs()
       },
       immediate: true
-    },
-    strategyInfo: {
-      handler () {
-        this.startManualAlertCheck()
-      },
-      immediate: true
     }
-  },
-  mounted () {
-    this.startManualAlertCheck()
   },
   beforeDestroy () {
     this.stopAutoRefresh()
-    this.stopManualAlertCheck()
   },
   methods: {
     async loadLogs () {
@@ -229,7 +172,7 @@ export default {
     },
 
     getLevelColor (level) {
-      const map = { info: 'blue', warn: 'orange', error: 'red', trade: 'green', signal: 'purple', manual: 'gold' }
+      const map = { info: 'blue', warn: 'orange', error: 'red', trade: 'green', signal: 'purple' }
       return map[level] || 'default'
     },
 
@@ -267,97 +210,10 @@ export default {
           } finally {
             this.clearing = false
           }
-        }
-      })
-    },
-
-    startManualAlertCheck () {
-      this.stopManualAlertCheck()
-      if (!this.isCNStockStrategy || !this.currentSymbol) return
-      this.checkCNStockAlertTime()
-      this.manualAlertTimer = setInterval(() => {
-        this.checkCNStockAlertTime()
-      }, 30000)
-    },
-
-    stopManualAlertCheck () {
-      if (this.manualAlertTimer) {
-        clearInterval(this.manualAlertTimer)
-        this.manualAlertTimer = null
       }
-    },
-
-    checkCNStockAlertTime () {
-      const now = new Date()
-      const day = now.getDay()
-      if (day === 0 || day === 6) return
-      const hours = now.getHours()
-      const minutes = now.getMinutes()
-      const totalMinutes = hours * 60 + minutes
-      const morningAlert = 9 * 60 + 15
-      const afternoonAlert = 13 * 60 + 0
-      if (totalMinutes >= morningAlert && totalMinutes < 9 * 60 + 30) {
-        this.showManualAlert('上午盘', now)
-      } else if (totalMinutes >= afternoonAlert && totalMinutes < 13 * 60 + 15) {
-        this.showManualAlert('下午盘', now)
-      } else {
-        this.manualAlertVisible = false
-      }
-    },
-
-    async showManualAlert (session, now) {
-      const alertKey = `${session}_${now.getDate()}`
-      if (this.lastAlertTime === alertKey) return
-      this.lastAlertTime = alertKey
-      try {
-        const res = await request({
-          url: '/api/market/price',
-          method: 'get',
-          params: {
-            market: 'CNStock',
-            symbol: this.currentSymbol
-          }
-        })
-        if (res && res.code === 1 && res.data) {
-          const price = parseFloat(res.data.price || 0)
-          if (price > 0) {
-            this.priceCache[this.currentSymbol] = price
-            const alertTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
-            this.manualAlertData = {
-              symbol: this.currentSymbol,
-              name: (this.strategyInfo && this.strategyInfo.strategy_name) || '',
-              price: price.toFixed(2),
-              alertTime: alertTime,
-              session: session === '上午盘' ? '09:30 - 11:30' : '13:00 - 15:00'
-            }
-            this.manualAlertVisible = true
-            this.$notification.warning({
-              message: '手动操作提示',
-              description: `A股${session}即将开始，当前价格：${price.toFixed(2)}，建议提前下单`,
-              duration: 15
-            })
-            try {
-              await request({
-                url: '/api/strategies/notifications/manual-alert',
-                method: 'post',
-                data: {
-                  strategy_id: this.strategyId,
-                  symbol: this.currentSymbol,
-                  price: price,
-                  session: session,
-                  alert_time: alertTime
-                }
-              })
-            } catch (notifyErr) {
-              console.warn('Send manual alert notification failed:', notifyErr)
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('Get CNStock price failed:', e)
-      }
-    }
+    })
   }
+}
 }
 </script>
 
@@ -484,22 +340,6 @@ export default {
     }
   }
 
-  // Manual
-  &.tab-manual {
-    color: #fa8c16;
-    background: #fffbe6;
-    border-color: #ffe58f;
-    .tab-count { background: #ffe58f; color: #fa8c16; }
-    &:hover { background: #fff7d6; }
-    &.active {
-      color: #fff;
-      background: linear-gradient(135deg, #faad14, #fa8c16);
-      border-color: transparent;
-      box-shadow: 0 2px 8px rgba(250, 140, 22, 0.35);
-      .tab-count { background: rgba(255, 255, 255, 0.3); color: #fff; }
-    }
-  }
-
   // Error
   &.tab-error {
     color: #d93026;
@@ -582,77 +422,6 @@ export default {
   word-break: break-all;
 }
 
-.manual-alert-panel {
-  background: linear-gradient(135deg, #fffbe6, #fff7e6);
-  border: 1px solid #ffe58f;
-  border-radius: 8px;
-  padding: 12px;
-  margin-bottom: 8px;
-
-  .alert-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 12px;
-    padding-bottom: 8px;
-    border-bottom: 1px dashed #ffe58f;
-
-    .alert-icon {
-      font-size: 18px;
-      color: #fa8c16;
-      margin-right: 8px;
-    }
-
-    .alert-title {
-      font-size: 14px;
-      font-weight: 600;
-      color: #fa8c16;
-    }
-  }
-
-  .alert-content {
-    .alert-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 6px 0;
-
-      .alert-label {
-        font-size: 12px;
-        color: #8c8c8c;
-        min-width: 60px;
-      }
-
-      .alert-value {
-        font-size: 12px;
-        color: #333;
-        font-weight: 500;
-
-        &.price-value {
-          font-size: 16px;
-          color: #fa8c16;
-          font-weight: 600;
-        }
-      }
-    }
-
-    .alert-tip {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin-top: 12px;
-      padding-top: 8px;
-      border-top: 1px dashed #ffe58f;
-      font-size: 11px;
-      color: #fa8c16;
-
-      .anticon {
-        font-size: 12px;
-      }
-    }
-  }
-}
-
 .theme-dark {
   .logs-toolbar {
     .toolbar-right .auto-refresh-label {
@@ -716,20 +485,6 @@ export default {
         .tab-count { background: rgba(255, 255, 255, 0.25); color: #fff; }
       }
     }
-    &.tab-manual {
-      color: #ffa940;
-      background: rgba(250, 140, 22, 0.08);
-      border-color: rgba(250, 140, 22, 0.2);
-      .tab-count { background: rgba(250, 140, 22, 0.15); color: #ffa940; }
-      &:hover { background: rgba(250, 140, 22, 0.14); }
-      &.active {
-        color: #fff;
-        background: linear-gradient(135deg, #faad14, #fa8c16);
-        border-color: transparent;
-        box-shadow: 0 2px 10px rgba(250, 140, 22, 0.4);
-        .tab-count { background: rgba(255, 255, 255, 0.25); color: #fff; }
-      }
-    }
   }
 
   .logs-container {
@@ -769,44 +524,6 @@ export default {
 
   .log-message {
     color: rgba(255, 255, 255, 0.75);
-  }
-
-  .manual-alert-panel {
-    background: rgba(250, 140, 22, 0.08);
-    border-color: rgba(250, 140, 22, 0.2);
-
-    .alert-header {
-      border-bottom-color: rgba(250, 140, 22, 0.2);
-
-      .alert-icon {
-        color: #ffa940;
-      }
-
-      .alert-title {
-        color: #ffa940;
-      }
-    }
-
-    .alert-content {
-      .alert-row {
-        .alert-label {
-          color: rgba(255, 255, 255, 0.4);
-        }
-
-        .alert-value {
-          color: rgba(255, 255, 255, 0.75);
-
-          &.price-value {
-            color: #ffa940;
-          }
-        }
-      }
-
-      .alert-tip {
-        border-top-color: rgba(250, 140, 22, 0.2);
-        color: #ffa940;
-      }
-    }
   }
 }
 </style>
